@@ -1,3 +1,17 @@
 # Scripts
 
-Useful scripts I want saved.
+- [combines cd and ls](cd.sh)
+- [Get explanation of commands](command-help.sh)
+- [Finds occurrences of the same string and prints them in descending order](find-occurrences.sh)
+- [Converts a flac file to 320k mp3](flac-to-mp3.sh)
+- [Count commits in git on branch](git-count-commits.sh)
+- [Exec a command while rebasing](git-exec-command.sh)
+- [Add changes to a commit and its children](git-fixup.sh)
+- [Search commit content with <regexp>](git-grep-history.sh)
+- [Shows git history as a graph](git-history-graph.sh)
+- [Show all git commits with diffs](git-log-diff.sh)
+- [Filter git log](git-log-filter.sh)
+- [Show patches in git log](git-log-patch.sh)
+- [Get the computer's local ip address and print to stdout](local-ip.sh)
+- [Opens current git branch in browser](open-git-branch.sh)
+- [Saves online documentation locally](save-docs.sh)

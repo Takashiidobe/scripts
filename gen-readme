@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# grab all *.sh files that aren't this file
+
+echo -e "# Scripts\n" > README.md
+files="$(ls *.sh)"
+
+for f in $files; do
+  explanation="$(cat $f | grep Explanation | sed 's/# Explanation: //g')"
+  echo "- [$explanation]($f)" >> README.md
+done
