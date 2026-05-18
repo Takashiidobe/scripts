@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# catch uninitialized variables
+set -u
+
+extract_text ()
+{
+    awk -v cmd="$cmd" -v regex="^\\\s*$1\\\>" '
+        $0 ~ regex{f=2; print; next}
+        f==2 && /^\s*--/{f=1; print; next}
+        f==2 && cmd=="sed" && /^\s*$/{f=1; print; next}
+        (/^\s*$/  || /^\s*-/) && f{exit}
+        f' "$file"
+}
+
+cmd="$1"
+shift
+file='/tmp/command_help.txt'
+
+cmd_type=$(type -t "$cmd")
+if [[ "$cmd_type" == 'builtin' ]]; then
+    help -m "$cmd" > "$file"
+elif [[ "$cmd_type" == 'file' ]]; then
+    man "$cmd" | col -bx > "$file"
+else
+    echo "Error: $cmd is not a valid command" 1>&2 && exit 1
+fi
+
+awk '/^NAME$/{f=1; next} /^\s*$/ && f{exit} f' "$file"
+echo
+
+for arg in "$@" ; do
+    if [[ $arg =~ ^-- ]] ; then
+        arg_mod="(-[a-zA-Z](\\\s*[^,]*)?,\\\s*)?${arg%%=*}"
+        extract_text "$arg_mod"
+    elif grep -q "^\s*$arg\b" "$file" ; then
+        extract_text "$arg"
+    elif grep -q "^\s*-[a-zA-Z],\s*$arg\b" "$file" ; then
+        arg_mod="-[a-zA-Z],\\\s*${arg%%=*}"
+        extract_text "$arg_mod"
+    elif [[ $arg =~ ^-[^-] ]] ; then
+        while read -n1 char; do
+            extract_text "-$char"
+            echo
+        done < <(echo -n "${arg:1}")
+    else
+        grep -iw -C3 "$arg" "$file"
+    fi
+done
+
+rm "$file"

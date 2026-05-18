@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Strip debug noise and detached attributes from LLVM IR."""
+
+import glob
+import re
+import sys
+from pathlib import Path
+
+
+_METADATA_ATTACHMENT_RE = re.compile(r"(?:,\s*|\s+)![-a-zA-Z0-9_.]+\s+![0-9]+")
+_ATTR_GROUP_REF_RE = re.compile(r"\s+#\d+(?=(?:\s*!|\s*[{:;]|$))")
+
+
+def _strip_comment(line):
+    if ";" in line:
+        return line[: line.index(";")]
+    return line
+
+
+def _clean_line(line):
+    text = _strip_comment(line).rstrip()
+    if not text:
+        return "\n"
+    stripped = text.lstrip()
+    if stripped.startswith("#dbg_"):
+        return None
+    if stripped.startswith("attributes #"):
+        return None
+    if stripped.startswith("!"):
+        return None
+
+    text = _METADATA_ATTACHMENT_RE.sub("", text)
+    text = _ATTR_GROUP_REF_RE.sub("", text)
+    return text.rstrip() + "\n"
+
+
+def _clean_lines(lines):
+    out = []
+    for line in lines:
+        cleaned = _clean_line(line)
+        if cleaned is None:
+            continue
+        if cleaned == "\n":
+            if out and out[-1] != "\n":
+                out.append("\n")
+            continue
+        out.append(cleaned)
+
+    while out and out[-1] == "\n":
+        out.pop()
+
+    return "".join(out) + "\n"
+
+
+def clean(path, dry_run=False):
+    with open(path, encoding="utf-8") as f:
+        original = f.read()
+    cleaned = _clean_lines(original.splitlines(keepends=True))
+    if dry_run:
+        if cleaned != original:
+            print(f"Would update {path}")
+        else:
+            print(f"No change {path}")
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(cleaned)
+
+
+def clean_stream(dry_run=False):
+    original = sys.stdin.read()
+    cleaned = _clean_lines(original.splitlines(keepends=True))
+    if dry_run:
+        if cleaned != original:
+            print("Would update stdin")
+        else:
+            print("No change stdin")
+        return
+    sys.stdout.write(cleaned)
+
+
+def _iter_input_files(patterns):
+    seen = set()
+    for pattern in patterns:
+        if pattern == "-":
+            yield "-"
+            continue
+        matches = glob.glob(pattern)
+        if not matches:
+            matches = [pattern]
+        for entry in matches:
+            p = Path(entry)
+            if p.suffix != ".ll" or not p.is_file():
+                print(f"Skipping {entry}: not a .ll file", file=sys.stderr)
+                continue
+            resolved = str(p.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            yield str(p)
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    dry_run = False
+    if "--dry-run" in args:
+        dry_run = True
+        args = [a for a in args if a != "--dry-run"]
+    if len(args) < 1:
+        print(
+            f"Usage: {sys.argv[0]} [--dry-run] <file.ll|glob|- > [more files/globs/-...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    had_inputs = False
+    for input_path in _iter_input_files(args):
+        had_inputs = True
+        if input_path == "-":
+            clean_stream(dry_run=dry_run)
+        else:
+            clean(input_path, dry_run=dry_run)
+    if not had_inputs:
+        print(
+            f"Usage: {sys.argv[0]} [--dry-run] <file.ll|glob|- > [more files/globs/-...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)

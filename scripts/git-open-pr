@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: git open-pr [--print] [--remote <remote>] [--repo <owner/name>] [<fork>/<branch>|<fork>:<branch>]
+
+Open the GitHub pull request in the upstream repository whose head matches the
+current branch.
+
+By default, the current branch is interpreted as <fork>/<branch>. For example:
+
+	Takashiidobe/handle-canonicalization-of-bool-cond-cmp
+
+maps to:
+
+	Takashiidobe:handle-canonicalization-of-bool-cond-cmp
+
+Options:
+  --print, --no-open       Print the PR URL without opening a browser.
+  --remote <remote>        Base repository remote to search (default: upstream,
+                           falling back to origin if upstream does not exist).
+  --repo <owner/name>      Base GitHub repository to search.
+EOF
+}
+
+die() {
+  printf 'git open-pr: %s\n' "$*" >&2
+  exit 1
+}
+
+repo_from_github_url() {
+  local url=$1
+  local repo
+
+  url=${url%/}
+  url=${url%.git}
+
+  case "$url" in
+    git@github.com:*/*)
+      repo=${url#git@github.com:}
+      ;;
+    ssh://git@github.com/*/*)
+      repo=${url#ssh://git@github.com/}
+      ;;
+    https://github.com/*/*)
+      repo=${url#https://github.com/}
+      ;;
+    http://github.com/*/*)
+      repo=${url#http://github.com/}
+      ;;
+    git://github.com/*/*)
+      repo=${url#git://github.com/}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [[ "$repo" == */* ]] || return 1
+  printf '%s\n' "$repo"
+}
+
+open_url() {
+  local url=$1
+
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 &
+    return 0
+  fi
+
+  if command -v open >/dev/null 2>&1; then
+    open "$url" >/dev/null 2>&1 &
+    return 0
+  fi
+
+  printf 'git open-pr: no browser opener found; printed URL only\n' >&2
+}
+
+should_open=true
+base_remote=
+base_repo=
+
+while (($#)); do
+  case "$1" in
+    --print|--no-open)
+      should_open=false
+      shift
+      ;;
+    --remote)
+      (($# >= 2)) || die "--remote requires a value"
+      base_remote=$2
+      shift 2
+      ;;
+    --repo)
+      (($# >= 2)) || die "--repo requires a value"
+      base_repo=$2
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+(($# <= 1)) || { usage >&2; exit 2; }
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+  die "not inside a git worktree"
+
+if (($# == 1)); then
+  branch_spec=$1
+else
+  branch_spec=$(git branch --show-current)
+  [[ -n "$branch_spec" ]] || die "cannot infer a branch while HEAD is detached"
+fi
+
+if [[ "$branch_spec" == *:* ]]; then
+  fork_owner=${branch_spec%%:*}
+  head_branch=${branch_spec#*:}
+else
+  [[ "$branch_spec" == */* ]] ||
+    die "expected current branch to look like <fork>/<branch>, got '$branch_spec'"
+  fork_owner=${branch_spec%%/*}
+  head_branch=${branch_spec#*/}
+fi
+
+[[ -n "$fork_owner" ]] || die "empty fork owner in '$branch_spec'"
+[[ -n "$head_branch" ]] || die "empty head branch in '$branch_spec'"
+[[ "$fork_owner" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] ||
+  die "invalid GitHub username: '$fork_owner'"
+
+git check-ref-format --branch "$head_branch" >/dev/null ||
+  die "invalid head branch name: '$head_branch'"
+
+if [[ -n "$base_repo" ]]; then
+  [[ "$base_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+    die "invalid GitHub repository: '$base_repo'"
+else
+  if [[ -z "$base_remote" ]]; then
+    if git remote get-url upstream >/dev/null 2>&1; then
+      base_remote=upstream
+    else
+      base_remote=origin
+    fi
+  fi
+
+  remote_url=$(git remote get-url "$base_remote") ||
+    die "remote '$base_remote' does not exist"
+  base_repo=$(repo_from_github_url "$remote_url") ||
+    die "could not infer a GitHub repository from remote '$base_remote': $remote_url"
+fi
+
+command -v gh >/dev/null 2>&1 ||
+  die "GitHub CLI 'gh' is required"
+
+head_spec="${fork_owner}:${head_branch}"
+pr_url=$(
+  gh api --method GET \
+    -H 'Accept: application/vnd.github+json' \
+    "/repos/${base_repo}/pulls" \
+    -f state=all \
+    -f "head=${head_spec}" \
+    --jq 'sort_by(.updated_at) | reverse | .[0].html_url'
+)
+
+[[ -n "$pr_url" ]] ||
+  die "no PR found in ${base_repo} for head ${head_spec}"
+
+printf '%s\n' "$pr_url"
+
+if [[ "$should_open" == true ]]; then
+  open_url "$pr_url"
+fi

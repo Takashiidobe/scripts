@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Usage: INPUT_FLAC=input.flac OUTPUT_MP3=output.mp3 flac-to-mp3
+ffmpeg -i "$INPUT_FLAC" -ab 320k -map_metadata 0 -id3v2_version 3 "$OUTPUT_MP3"

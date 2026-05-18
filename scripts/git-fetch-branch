@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: git fetch-branch [--dry-run] [--remote <remote>] <user:branch>
+
+Fetch a branch from another user's GitHub fork of this repository into a local
+branch named <user>/<branch>, and configure it to track the fork branch so
+future `git pull` commands pull from that fork.
+
+Example:
+  git fetch-branch takashiidobe:handle-canonicalization-of-bool-cond-cmp
+
+This fetches:
+
+  https://github.com/takashiidobe/<repo>.git handle-canonicalization-of-bool-cond-cmp 
+
+Into local branch:
+
+	handle-canonicalization-of-bool-cond-cmp
+
+And tracks branch handle-canonicalization-of-bool-cond-cmp from remote Takashiidobe.
+EOF
+}
+
+die() {
+  printf 'git fetch-branch: %s\n' "$*" >&2
+  exit 1
+}
+
+run() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  if [[ "${dry_run}" != true ]]; then
+    "$@"
+  fi
+}
+
+github_slug_from_url() {
+  local url=$1
+  local slug
+
+  url=${url%.git}
+  url=${url%/}
+  case "$url" in
+    https://github.com/*)
+      slug=${url#https://github.com/}
+      ;;
+    http://github.com/*)
+      slug=${url#http://github.com/}
+      ;;
+    git://github.com/*)
+      slug=${url#git://github.com/}
+      ;;
+    git@github.com:*)
+      slug=${url#git@github.com:}
+      ;;
+    ssh://git@github.com/*)
+      slug=${url#ssh://git@github.com/}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [[ "$slug" == */* ]] || return 1
+  printf '%s\n' "$slug"
+}
+
+dry_run=false
+remote=origin
+
+while (($#)); do
+  case "$1" in
+    --dry-run|-n)
+      dry_run=true
+      shift
+      ;;
+    --no-push)
+      shift
+      ;;
+    --remote)
+      (($# >= 2)) || die "--remote requires a value"
+      remote=$2
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+(($# == 1)) || { usage >&2; exit 2; }
+
+spec=$1
+[[ "$spec" == *:* ]] || die "expected <user:branch>, got '$spec'"
+
+user=${spec%%:*}
+source_branch=${spec#*:}
+if [[ "$source_branch" == "${user}/"* ]]; then
+  target_branch="$source_branch"
+else
+  target_branch="${user}/${source_branch}"
+fi
+
+[[ -n "$user" ]] || die "empty GitHub username in '$spec'"
+[[ -n "$source_branch" ]] || die "empty branch name in '$spec'"
+[[ "$user" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] ||
+  die "invalid GitHub username: '$user'"
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+  die "not inside a git worktree"
+
+git check-ref-format --branch "$source_branch" >/dev/null ||
+  die "invalid source branch name: '$source_branch'"
+git check-ref-format --branch "$target_branch" >/dev/null ||
+  die "invalid target branch name: '$target_branch'"
+
+repo_root=$(git rev-parse --show-toplevel)
+origin_url=$(git -C "$repo_root" remote get-url "$remote") ||
+  die "remote '$remote' does not exist"
+
+repo_name=${origin_url##*/}
+repo_name=${repo_name%.git}
+repo_name=${repo_name%/}
+[[ -n "$repo_name" ]] || die "could not infer repository name from '$remote' URL: $origin_url"
+
+fork_url="https://github.com/${user}/${repo_name}.git"
+fork_slug="${user}/${repo_name}"
+source_ref="refs/heads/${source_branch}"
+target_ref="refs/heads/${target_branch}"
+remote_tracking_ref="refs/remotes/${user}/${source_branch}"
+
+if existing_fork_url=$(git -C "$repo_root" remote get-url "$user" 2>/dev/null); then
+  if existing_fork_slug=$(github_slug_from_url "$existing_fork_url"); then
+    [[ "$existing_fork_slug" == "$fork_slug" ]] ||
+      die "remote '$user' points to '$existing_fork_url', not '$fork_url'"
+  else
+    die "remote '$user' already exists with non-GitHub URL: $existing_fork_url"
+  fi
+else
+  run git -C "$repo_root" remote add "$user" "$fork_url"
+fi
+
+fetch_refspecs=("+${source_ref}:${remote_tracking_ref}")
+if [[ "$(git -C "$repo_root" branch --show-current)" != "$target_branch" ]]; then
+  fetch_refspecs+=("+${source_ref}:${target_ref}")
+fi
+
+run git -C "$repo_root" fetch "$user" "${fetch_refspecs[@]}"
+run git -C "$repo_root" config "branch.${target_branch}.remote" "$user"
+run git -C "$repo_root" config "branch.${target_branch}.merge" "$source_ref"
+
+printf 'Branch ready: %s\n' "$target_branch"

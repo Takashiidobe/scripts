@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+x=$(git config --local remote.origin.url)
+y=$(git symbolic-ref --short HEAD)
+url="$x/tree/$y"
+open "$url"

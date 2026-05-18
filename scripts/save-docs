@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Usage: save-docs <url>
+wget --recursive --level=5 --convert-links --page-requisites \
+     --wait=1 --random-wait --timestamping --no-parent "$1"

@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+git log --graph --oneline --decorate --all --full-history --author-date-order --no-notes

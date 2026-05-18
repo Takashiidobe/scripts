@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Usage: git-exec-command <command> [num_commits]
+command_to_execute="$1"
+num="${2:-3}"
+git rebase "HEAD~$num" --exec "$command_to_execute"

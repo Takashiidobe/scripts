@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Usage: git-fixup <fixup_commit> [squash_commit]
+fixup_commit="${1:-HEAD~1}"
+squash_commit="${2:-HEAD~3}"
+git add .
+git commit --fixup "$fixup_commit"
+git rebase -i "$squash_commit" --autosquash

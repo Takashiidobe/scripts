@@ -1,0 +1,49 @@
+body {
+    font-family: Georgia, serif;
+    max-width: 740px;
+    margin: 3em auto;
+    padding: 0 1.5em;
+    color: #111;
+    background: #fff;
+    line-height: 1.6;
+}
+
+h1 {
+    font-size: 1.4em;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 0.3em;
+    margin-bottom: 1em;
+}
+
+nav {
+    margin-bottom: 2em;
+    font-size: 0.9em;
+}
+
+a { color: #00d; }
+
+p.desc {
+    margin-top: 0;
+    color: #444;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td {
+    padding: 0.35em 1.5em 0.35em 0;
+    vertical-align: top;
+}
+
+td:first-child {
+    white-space: nowrap;
+}
+
+.download {
+    margin-top: 2em;
+    padding-top: 1em;
+    border-top: 1px solid #ddd;
+    font-family: monospace;
+}

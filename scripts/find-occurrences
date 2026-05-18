@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Usage: find-occurrences <file.csv> <field_number>
+cat "$1" | cut -d, -f "${2:-3}" | sort | uniq -c | sort -rn

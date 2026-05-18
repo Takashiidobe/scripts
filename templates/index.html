@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scripts</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>Scripts</h1>
+<table>
+$for(scripts)$
+<tr>
+  <td><a href="scripts/$scripts.name$/index.html">$scripts.title$</a></td>
+  <td>$scripts.description$</td>
+</tr>
+$endfor$
+</table>
+</body>
+</html>

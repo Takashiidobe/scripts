@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Usage: git-count-commits [branch]
+branch="${1:-master}"
+git rev-list --count "$branch"
